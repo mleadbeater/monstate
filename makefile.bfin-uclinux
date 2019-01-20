@@ -1,0 +1,221 @@
+
+CC = bfin-linux-uclibc-gcc
+CFLAGS = -g -pedantic -Wall
+SHARED_LIBRARY_FLAGS = -shared -Wl,-soname,$@ -o $@
+SL_EXTN = so.1.0
+BUILDDIR = .
+STAGEDIR = .
+#SHARED_LIBRARY_FLAGS = -dynamiclib -o $@
+#SL_EXTN = $(SL_EXTN)
+#BUILDDIR = Build
+#STAGEDIR = Stage
+#$BUILD_DIRS = $(BUILDDIR) $(STAGEDIR)
+
+PLUGINS = $(STAGEDIR)/libdate_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/liblistfiles_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libwritefile_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libipaddr_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libping_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libreadfile_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libsocketscript_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libexpr_plugin.$(SL_EXTN) \
+	$(STAGEDIR)/libpasswd_plugin.$(SL_EXTN)
+
+##	$(STAGEDIR)/libcurl_plugin.$(SL_EXTN) 
+
+COMMONLIBS = $(BUILDDIR)/symboltable.o $(BUILDDIR)/options.o $(BUILDDIR)/property.o
+COMMONDEPS = symboltable.h options.h property.h
+DLLIB = -ldl
+		
+all:	$(BUILD_DIRS) $(STAGEDIR)/monstate $(PLUGINS) md5
+
+Build:	
+	mkdir Build
+
+Stage:
+	mkdir Stage
+
+test:	$(BUILDDIR)/test_read_file $(BUILDDIR)/test_read_socket \
+		$(BUILDDIR)/test_variables $(BUILDDIR)/test_splitstring $(BUILDDIR)/test_regexp
+
+$(STAGEDIR)/monstate:	monstate.tab.c monstate.yy.c monitor.h \
+		$(COMMONLIBS) $(COMMONDEPS) \
+		$(BUILDDIR)/condition.o $(BUILDDIR)/method.o \
+		$(BUILDDIR)/regular_expressions.o $(BUILDDIR)/read_file.o \
+		$(BUILDDIR)/splitstring.o $(BUILDDIR)/plugin.o \
+		$(BUILDDIR)/buffers.o
+	mv version.h version.h.old
+	awk '/BUILD_NUMBER/ { $$3=$$3+1; $$0=sprintf("#define BUILD_NUMBER %d", $$3); } {print}' version.h.old >version.h
+	$(CC) -o $@ -g -Wl,-Map=monstate.map,--cref -Wa,-ahlms=monstate.lst \
+		monstate.tab.c monstate.yy.c $(COMMONLIBS) \
+		$(BUILDDIR)/condition.o $(BUILDDIR)/method.o \
+		$(BUILDDIR)/regular_expressions.o $(BUILDDIR)/read_file.o \
+		$(BUILDDIR)/splitstring.o $(BUILDDIR)/plugin.o $(DLLIB) \
+		$(BUILDDIR)/buffers.o
+	rm y.tab.h
+
+monstate.tab.c:	monitor.y monitor.h Makefile monitor.l
+	yacc -o $@ -v -d monitor.y
+	ln -sf monstate.tab.h y.tab.h
+
+monstate.yy.c:	monitor.l monitor.h Makefile monstate.tab.c
+	lex -o $@ monitor.l
+
+expr.tab.c:	expr.y expr.h Makefile expr_plugin.c
+	yacc -o $@ -v -d expr.y
+	ln -sf expr.tab.h y.tab.h
+
+expr.yy.c:	expr.l expr.h Makefile expr.tab.c
+	lex -o $@ expr.l
+
+md5:	md5.sh
+	cp md5.sh md5
+	chmod ugo+x md5
+
+$(BUILDDIR)/read_file.o:	symboltable.h read_file.c options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ read_file.c
+
+$(BUILDDIR)/property.o:	symboltable.h property.c options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ property.c
+
+$(BUILDDIR)/socket_script.o:	symboltable.h socket_script.c options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ socket_script.c
+
+$(BUILDDIR)/symboltable.o:	symboltable.c symboltable.h options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ symboltable.c
+
+$(BUILDDIR)/condition.o: condition.c condition.h options.h Makefile symboltable.h 
+	$(CC) $(CFLAGS) -c -o $@ condition.c
+
+$(BUILDDIR)/method.o:	method.c method.h options.h Makefile symboltable.h 
+	$(CC) $(CFLAGS) -c -o $@ method.c
+
+$(BUILDDIR)/plugin.o:	plugin.c symboltable.h property.h splitstring.h options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ plugin.c
+
+$(BUILDDIR)/options.o:	options.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ options.c
+
+$(BUILDDIR)/splitstring.o:	splitstring.c splitstring.h Makefile symboltable.h 
+	$(CC) $(CFLAGS) -c -o $@ splitstring.c
+
+$(BUILDDIR)/regular_expressions.o:	regular_expressions.c regular_expressions.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ regular_expressions.c
+
+$(BUILDDIR)/buffers.o:	buffers.c buffers.h Makefile
+	$(CC) $(CFLAGS) -c -o $@ buffers.c
+
+# note that in this example, we require that functions have a 
+# visibility option in order that they be exported
+# (see: -fvisibility=hidden )
+
+$(STAGEDIR)/libdate_plugin.$(SL_EXTN):	date_plugin.c Makefile
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) date_plugin.c -fvisibility=hidden
+
+$(STAGEDIR)/liblistfiles_plugin.$(SL_EXTN):	listfiles_plugin.c Makefile buffers.h $(BUILDDIR)/buffers.o
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) listfiles_plugin.c -fvisibility=hidden $(BUILDDIR)/buffers.o \
+				$(BUILDDIR)/regular_expressions.o $(BUILDDIR)/property.o \
+                                $(BUILDDIR)/symboltable.o $(BUILDDIR)/options.o
+
+$(STAGEDIR)/libwritefile_plugin.$(SL_EXTN):	writefile_plugin.c Makefile $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) writefile_plugin.c -fvisibility=hidden $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o
+
+$(STAGEDIR)/libipaddr_plugin.$(SL_EXTN):	ipaddr_plugin.c Makefile buffers.h $(BUILDDIR)/buffers.o
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) ipaddr_plugin.c -fvisibility=hidden $(BUILDDIR)/buffers.o
+
+$(STAGEDIR)/libping_plugin.$(SL_EXTN):	ping_plugin.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+		$(BUILDDIR)/symboltable.o $(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) ping_plugin.c -fvisibility=hidden $(BUILDDIR)/buffers.o \
+		$(BUILDDIR)/symboltable.o $(BUILDDIR)/regular_expressions.o 
+	$(CC) $(CFLAGS) -DTEST_PLUGIN=1 ping_plugin.c -o $(BUILDDIR)/test_ping_plugin  $(BUILDDIR)/buffers.o \
+		$(BUILDDIR)/symboltable.o $(BUILDDIR)/regular_expressions.o 
+
+$(STAGEDIR)/libcurl_plugin.$(SL_EXTN):	curl_plugin.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+		symboltable.h $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) curl_plugin.c -fvisibility=hidden $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o -lcurl
+	$(CC) $(CFLAGS) -DTEST_PLUGIN curl_plugin.c -o $(BUILDDIR)/test_curl_plugin $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o  -lcurl
+
+$(STAGEDIR)/libreadfile_plugin.$(SL_EXTN):	read_file.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+		symboltable.h $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) -DBUILD_PLUGIN read_file.c -fvisibility=hidden \
+		$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN read_file.c -o $(BUILDDIR)/test_readfile_plugin \
+		$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+
+$(STAGEDIR)/libsocketscript_plugin.$(SL_EXTN):	socket_script.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+		symboltable.h $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) -DBUILD_PLUGIN socket_script.c -fvisibility=hidden \
+		$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN socket_script.c -o $(BUILDDIR)/test_socket_plugin \
+		$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+
+$(STAGEDIR)/libexpr_plugin.$(SL_EXTN):	expr_plugin.c expr.tab.c expr.yy.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+				symboltable.h $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) -DBUILD_PLUGIN expr_plugin.c expr.tab.c expr.yy.c  -fvisibility=hidden \
+				$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN expr_plugin.c expr.tab.c expr.yy.c -o $(BUILDDIR)/test_expr_plugin \
+				$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o
+
+$(BUILDDIR)/test_read_socket:	test_read_socket.c $(BUILDDIR)/socket_script.o $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/options.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o  $(BUILDDIR)/buffers.o
+	$(CC) $(CFLAGS) -o $(BUILDDIR)/test_read_socket -g $(BUILDDIR)/socket_script.o $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/options.o $(BUILDDIR)/property.o test_read_socket.c \
+		$(BUILDDIR)/regular_expressions.o $(BUILDDIR)/buffers.o
+
+$(BUILDDIR)/test_read_file:	test_read_file.c $(BUILDDIR)/read_file.o $(BUILDDIR)/symboltable.o $(BUILDDIR)/options.o $(BUILDDIR)/property.o
+	$(CC) $(CFLAGS) -o $(BUILDDIR)/test_read_file -g $(BUILDDIR)/read_file.o $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/options.o $(BUILDDIR)/property.o test_read_file.c \
+		$(BUILDDIR)/regular_expressions.o 
+
+$(BUILDDIR)/test_variables:	symboltable.h $(BUILDDIR)/symboltable.o $(BUILDDIR)/method.o test_variables.c Makefile
+	$(CC) $(CFLAGS) -o $(BUILDDIR)/test_variables $(BUILDDIR)/symboltable.o test_variables.c \
+		$(BUILDDIR)/regular_expressions.o 
+
+$(BUILDDIR)/test_splitstring:	splitstring.h $(BUILDDIR)/splitstring.o symboltable.h $(BUILDDIR)/symboltable.o test_splitstring.c Makefile
+	$(CC) $(CFLAGS) -o $(BUILDDIR)/test_splitstring $(BUILDDIR)/symboltable.o $(BUILDDIR)/splitstring.o test_splitstring.c \
+		$(BUILDDIR)/regular_expressions.o $(BUILDDIR)/symboltable.o
+
+$(BUILDDIR)/test_date_plugin:	symboltable.h $(BUILDDIR)/symboltable.o date_plugin.c Makefile
+	$(CC) $(CFLAGS) -o $(BUILDDIR)/test_date_plugin $(BUILDDIR)/symboltable.o \
+		$(BUILDDIR)/splitstring.o -DTESTING_PLUGIN=1 date_plugin.c \
+		$(BUILDDIR)/regular_expressions.o 
+
+$(BUILDDIR)/test_regexp:	symboltable.h $(BUILDDIR)/symboltable.o regular_expressions.c Makefile
+	$(CC) $(CFLAGS)  -DTESTING -o $@ regular_expressions.c 
+
+$(STAGEDIR)/libpasswd_plugin.$(SL_EXTN):	passwd_plugin.c Makefile buffers.h $(BUILDDIR)/buffers.o \
+				symboltable.h $(BUILDDIR)/symboltable.o $(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o 
+	$(CC) $(SHARED_LIBRARY_FLAGS)  $(CFLAGS) -DBUILD_PLUGIN passwd_plugin.c -fvisibility=hidden \
+				$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o \
+				$(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o -lcrypt
+	$(CC) $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN passwd_plugin.c -o $(BUILDDIR)/test_passwd_plugin \
+				$(BUILDDIR)/options.o $(BUILDDIR)/buffers.o $(BUILDDIR)/symboltable.o \
+				$(BUILDDIR)/property.o \
+		$(BUILDDIR)/regular_expressions.o -lcrypt
+
+clean:
+	rm -rf *.dSYM ./$(BUILDDIR)/*.dSYM
+	rm -f lex.yy.c *.tab.h *.tab.c *.yy.c ./$(STAGEDIR)/monstate ./$(BUILDDIR)/*.o  \
+		test_variables monstate.output expr.output \
+		./$(STAGEDIR)/*.$(SL_EXTN) test_read_file test_read_socket test_splitstring \
+		test_curl_plugin test_date_plugin test_ping_plugin \
+		test_readfile_plugin test_socketscript_plugin test_readfile_plugin \
+		test_regexp version.h.old
+

@@ -1,0 +1,6 @@
+
+* files cannot include path names due to a lexical anaylsis/grammar problem
+
+* some memory is leaked when the config file is read
+
+* mallocs which fail are not caught correctly

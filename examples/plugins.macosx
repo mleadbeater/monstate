@@ -1,0 +1,18 @@
+PROPERTY DATE {
+  DEFINE LIBRARY = libdate_plugin.dylib;
+  DEFINE RETAIN = YES # note this is the default anyway and is ommitted from here on
+}
+
+PROPERTY FILE {
+  DEFINE LIBRARY = libreadfile_plugin.dylib;
+  DEFINE MAXBUFSIZE = 4000
+}
+
+PROPERTY LS        { DEFINE LIBRARY = liblistfiles_plugin.dylib }
+PROPERTY WRITE     { DEFINE LIBRARY = libwritefile_plugin.dylib }
+PROPERTY PING      { DEFINE LIBRARY = libping_plugin.dylib }
+PROPERTY IPADDRESS { DEFINE LIBRARY = libipaddr_plugin.dylib }
+PROPERTY CURL      { DEFINE LIBRARY = libcurl_plugin.dylib }
+PROPERTY EXPR      { DEFINE LIBRARY = libexpr_plugin.dylib }
+PROPERTY SCRIPT    { DEFINE LIBRARY = libsocketscript_plugin.dylib }
+

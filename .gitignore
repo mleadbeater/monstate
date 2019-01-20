@@ -1,0 +1,11 @@
+.DS_Store
+*.o
+*.output
+Build
+Stage
+expr.tab.*
+monstate.tab.*
+y.tab.h
+*.yy.c
+version.h.old
+

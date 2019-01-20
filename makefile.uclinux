@@ -1,0 +1,117 @@
+
+CFLAGS = -g -pedantic -Wall
+PLUGINS = libdate_plugin.so liblistfiles_plugin.so libwritefile_plugin.so \
+		libipaddr_plugin.so libping_plugin.so \
+		libreadfile_plugin.so \
+		libsocketscript_plugin.so
+
+DLLIB = -ldl
+		
+all:	monstate $(PLUGINS)
+
+test:	test_read_file test_read_socket test_variables test_splitstring
+
+monstate:	y.tab.c lex.yy.c monitor.h symboltable.o condition.o method.o \
+		regular_expressions.o options.o socket_script.o property.o read_file.o \
+		splitstring.o plugin.o
+	gcc -g -o $@ y.tab.c lex.yy.c symboltable.o condition.o method.o \
+		regular_expressions.o options.o socket_script.o property.o read_file.o \
+		splitstring.o plugin.o $(DLLIB)
+
+Makefile:	
+	ln -s makefile.linux Makefile
+
+y.tab.c:	monitor.y monitor.h Makefile
+	./hyacc -v -d monitor.y
+	
+
+lex.yy.c:	monitor.l monitor.h Makefile
+	flex monitor.l
+
+read_file.o:	symboltable.h read_file.c options.h Makefile
+
+property.o:	symboltable.h property.c options.h Makefile
+
+socket_script.o:	symboltable.h socket_script.c options.h Makefile
+
+symboltable.o:	symboltable.c symboltable.h options.h Makefile
+
+condition.o: condition.c condition.h options.h Makefile symboltable.h 
+
+method.o:	method.c method.h options.h Makefile symboltable.h 
+
+plugin.o:	symboltable.h property.h splitstring.h options.h Makefile
+
+splitstring.o:	splitstring.c splitstring.h Makefile symboltable.h 
+
+regular_expressions.o:	regular_expressions.c regular_expressions.h Makefile
+
+buffers.o:	buffers.c buffers.h Makefile
+
+# note that in this example, we require that functions have a 
+# visibility option in order that they be exported
+# (see: -fvisibility=hidden )
+
+libdate_plugin.so:	date_plugin.c Makefile
+	gcc -shared -Wl,-soname,$@.1 $(CFLAGS) date_plugin.c -fvisibility=hidden -o $@.1.0
+	rm -f $@ $@.1
+	ln -sf $@.1.0 $@.1
+	ln -sf $@.1.0 $@
+
+liblistfiles_plugin.so:	listfiles_plugin.c Makefile buffers.h buffers.o
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) listfiles_plugin.c -fvisibility=hidden -o $@.1.0 buffers.o
+	rm -f $@ $@.1
+	ln -sf $@.1.0 $@.1
+	ln -sf $@.1.0 $@
+
+libwritefile_plugin.so:	writefile_plugin.c Makefile
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) writefile_plugin.c -fvisibility=hidden -o $@.1.0 symboltable.o
+	rm -f $@ $@.1
+	ln -sf $@.1.0 $@.1
+	ln -sf $@.1.0 $@
+
+libipaddr_plugin.so:	ipaddr_plugin.c Makefile buffers.h buffers.o
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) ipaddr_plugin.c -fvisibility=hidden -o $@.1.0 buffers.o
+	rm -f $@ $@.1
+	ln -sf $@.1.0 $@.1
+	ln -sf $@.1.0 $@
+
+libping_plugin.so:	ping_plugin.c Makefile buffers.h buffers.o
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) ping_plugin.c -fvisibility=hidden -o $@.1.0  buffers.o
+	rm -f $@ $@.1
+	ln -sf $@.1.0 $@.1
+	ln -sf $@.1.0 $@
+
+
+libreadfile_plugin.so:	read_file.c Makefile buffers.h buffers.o symboltable.h symboltable.o property.o
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) ping_plugin.c -fvisibility=hidden -o $@.1.0 \
+		options.o buffers.o symboltable.o property.o
+	gcc $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN read_file.c -o test_readfile_plugin \
+		options.o buffers.o symboltable.o property.o
+
+libsocketscript_plugin.dylib:	socket_script.c Makefile buffers.h buffers.o symboltable.h symboltable.o
+	gcc -shared -Wl,-soname,$@.1  $(CFLAGS) ping_plugin.c -fvisibility=hidden -o $@.1.0 \
+		-o $@  options.o buffers.o symboltable.o property.o
+	gcc $(CFLAGS) -DBUILD_PLUGIN -DTESTING_PLUGIN socket_script.c -o test_socketscript_plugin \
+		options.o buffers.o symboltable.o property.o
+
+test_read_socket:	test_read_socket.c socket_script.o symboltable.o options.o property.o
+	gcc $(CFLAGS) -o test_read_socket -g socket_script.o symboltable.o options.o property.o test_read_socket.c
+
+test_read_file:	test_read_file.c read_file.o symboltable.o options.o property.o
+	gcc $(CFLAGS) -o test_read_file -g read_file.o symboltable.o options.o property.o test_read_file.c
+
+test_variables:	symboltable.h symboltable.o method.o test_variables.c Makefile
+	gcc $(CFLAGS) -o test_variables -g symboltable.o test_variables.c
+
+test_splitstring:	splitstring.h splitstring.o symboltable.h symboltable.o test_splitstring.c Makefile
+	gcc $(CFLAGS) -o test_splitstring -g symboltable.o splitstring.o test_splitstring.c
+
+test_date_plugin:	symboltable.h symboltable.o date_plugin.c Makefile
+	gcc $(CFLAGS) -o test_date_plugin -g symboltable.o splitstring.o -DTESTING_PLUGIN=1 date_plugin.c
+
+clean:
+	rm -f lex.yy.c y.tab.h y.tab.c *.o  monitor test_variables y.output \
+		*.so* test_read_file test_read_socket test_splitstring
+	rm -rf *.dSYM
+
